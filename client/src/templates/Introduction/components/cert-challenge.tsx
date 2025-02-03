@@ -1,30 +1,29 @@
-import { Button } from '@freecodecamp/react-bootstrap';
-import { navigate } from 'gatsby-link';
-import React, { useState, useEffect, MouseEvent } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation, withTranslation } from 'react-i18next';
 import { connect } from 'react-redux';
 import { createSelector } from 'reselect';
+import { Button } from '@freecodecamp/ui';
+
 import {
   certSlugTypeMap,
   superBlockCertTypeMap
-} from '../../../../../config/certification-settings';
-import { SuperBlocks } from '../../../../../config/superblocks';
+} from '../../../../../shared/config/certification-settings';
+import { SuperBlocks } from '../../../../../shared/config/curriculum';
 
-import { createFlashMessage } from '../../../components/Flash/redux';
-import { FlashMessages } from '../../../components/Flash/redux/flash-messages';
 import {
   isSignedInSelector,
   userFetchStateSelector,
   currentCertsSelector
 } from '../../../redux/selectors';
 import { User, Steps } from '../../../redux/prop-types';
-import { verifyCert } from '../../../redux/settings/actions';
-import { liveCerts } from '../../../../config/cert-and-project-map';
+import {
+  type CertTitle,
+  liveCerts
+} from '../../../../config/cert-and-project-map';
 
 interface CertChallengeProps {
   // TODO: create enum/reuse SuperBlocks enum somehow
   certification: string;
-  createFlashMessage: typeof createFlashMessage;
   fetchState: {
     pending: boolean;
     complete: boolean;
@@ -34,15 +33,9 @@ interface CertChallengeProps {
   isSignedIn: boolean;
   currentCerts: Steps['currentCerts'];
   superBlock: SuperBlocks;
-  title: (typeof liveCerts)[number]['title'];
+  title: CertTitle;
   user: User;
-  verifyCert: typeof verifyCert;
 }
-
-const honestyInfoMessage = {
-  type: 'info',
-  message: FlashMessages.HonestFirst
-};
 
 const mapStateToProps = (state: unknown) => {
   return createSelector(
@@ -61,20 +54,13 @@ const mapStateToProps = (state: unknown) => {
   )(state as Record<string, unknown>);
 };
 
-const mapDispatchToProps = {
-  createFlashMessage,
-  verifyCert
-};
-
 const CertChallenge = ({
-  createFlashMessage,
   currentCerts,
   superBlock,
-  verifyCert,
   title,
   fetchState,
   isSignedIn,
-  user: { isHonest, username }
+  user: { username }
 }: CertChallengeProps): JSX.Element => {
   const { t } = useTranslation();
   const [isCertified, setIsCertified] = useState(false);
@@ -109,25 +95,13 @@ const CertChallenge = ({
 
   const certLocation = `/certification/${username}/${certSlug}`;
 
-  const createClickHandler =
-    (certSlug: string | undefined) => (e: MouseEvent<HTMLAnchorElement>) => {
-      e.preventDefault();
-      if (isCertified) {
-        return navigate(certLocation);
-      }
-      return isHonest
-        ? verifyCert(certSlug)
-        : createFlashMessage(honestyInfoMessage);
-    };
   return (
-    <div className='block'>
+    <div>
       {isSignedIn && (
         <Button
           block={true}
-          bsStyle='primary'
-          className='cert-btn'
-          href={isCertified ? certLocation : `/settings#certification-settings`}
-          onClick={() => (isCertified ? createClickHandler(certSlug) : false)}
+          variant='primary'
+          href={isCertified ? certLocation : `/settings#cert-${certSlug}`}
         >
           {isCertified && userLoaded
             ? t('buttons.show-cert')
@@ -141,7 +115,4 @@ const CertChallenge = ({
 
 CertChallenge.displayName = 'CertChallenge';
 
-export default connect(
-  mapStateToProps,
-  mapDispatchToProps
-)(withTranslation()(CertChallenge));
+export default connect(mapStateToProps)(withTranslation()(CertChallenge));

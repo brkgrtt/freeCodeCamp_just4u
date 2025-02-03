@@ -16,7 +16,8 @@ import isURL from 'validator/lib/isURL';
 import fetch from 'node-fetch';
 import jwt from 'jsonwebtoken';
 
-import { jwtSecret } from '../../../../config/secrets';
+import { jwtSecret } from '../../../config/secrets';
+import { challengeTypes } from '../../../../shared/config/challenge-types';
 
 import {
   fixPartiallyCompletedChallengeItem,
@@ -36,8 +37,6 @@ import {
   validateGeneratedExamSchema,
   validateUserCompletedExamSchema
 } from '../utils/exam-schemas';
-import { isMicrosoftLearnLink } from '../../../../utils/validate';
-import { getApiUrlFromTrophy } from '../utils/ms-learn-utils';
 
 const log = debug('fcc:boot:challenges');
 
@@ -45,9 +44,8 @@ export default async function bootChallenge(app, done) {
   const send200toNonUser = ifNoUserSend(true);
   const api = app.loopback.Router();
   const router = app.loopback.Router();
-  const challengeUrlResolver = await createChallengeUrlResolver(
-    getChallenges()
-  );
+  const challengeUrlResolver =
+    await createChallengeUrlResolver(getChallenges());
   const redirectToCurrentChallenge = createRedirectToCurrentChallenge(
     challengeUrlResolver,
     normalizeParams,
@@ -100,6 +98,14 @@ export default async function bootChallenge(app, done) {
 
   api.post('/coderoad-challenge-completed', coderoadChallengeCompleted);
 
+  const msTrophyChallengeCompleted = createMsTrophyChallengeCompleted(app);
+
+  api.post(
+    '/ms-trophy-challenge-completed',
+    send200toNonUser,
+    msTrophyChallengeCompleted
+  );
+
   app.use(api);
   app.use(router);
   done();
@@ -114,12 +120,30 @@ const jsCertProjectIds = [
 ];
 
 const multifileCertProjectIds = getChallenges()
-  .filter(challenge => challenge.challengeType === 14)
+  .filter(
+    challenge => challenge.challengeType === challengeTypes.multifileCertProject
+  )
+  .map(challenge => challenge.id);
+
+const multifilePythonCertProjectIds = getChallenges()
+  .filter(
+    challenge =>
+      challenge.challengeType === challengeTypes.multifilePythonCertProject
+  )
   .map(challenge => challenge.id);
 
 const savableChallenges = getChallenges()
-  .filter(challenge => challenge.challengeType === 14)
+  .filter(challenge => {
+    return (
+      challenge.challengeType === challengeTypes.multifileCertProject ||
+      challenge.challengeType === challengeTypes.multifilePythonCertProject
+    );
+  })
   .map(challenge => challenge.id);
+
+const msTrophyChallenges = getChallenges()
+  .filter(challenge => challenge.challengeType === challengeTypes.msTrophy)
+  .map(({ id, msTrophyId }) => ({ id, msTrophyId }));
 
 export function buildUserUpdate(
   user,
@@ -131,7 +155,8 @@ export function buildUserUpdate(
   let completedChallenge = {};
   if (
     jsCertProjectIds.includes(challengeId) ||
-    multifileCertProjectIds.includes(challengeId)
+    multifileCertProjectIds.includes(challengeId) ||
+    multifilePythonCertProjectIds.includes(challengeId)
   ) {
     completedChallenge = {
       ..._completedChallenge,
@@ -328,7 +353,7 @@ export async function createChallengeUrlResolver(
 
 export function isValidChallengeCompletion(req, res, next) {
   const {
-    body: { id, challengeType, solution }
+    body: { id, challengeType, solution, githubLink }
   } = req;
 
   // ToDO: Validate other things (challengeFiles, etc)
@@ -345,7 +370,15 @@ export function isValidChallengeCompletion(req, res, next) {
     log('challengeType', challengeType, isNumeric(challengeType));
     return res.status(403).json(isValidChallengeCompletionErrorMsg);
   }
-  if ('solution' in req.body && !isURL(solution)) {
+  // If `backEndProject`:
+  // - `solution` needs to exist, but does not have to be valid URL
+  // - `githubLink` needs to exist and be valid URL
+  if (challengeType === challengeTypes.backEndProject) {
+    if (!solution || !isURL(githubLink + '')) {
+      log('isObjectId', id, ObjectID.isValid(id));
+      return res.status(403).json(isValidChallengeCompletionErrorMsg);
+    }
+  } else if ('solution' in req.body && !isURL(solution)) {
     log('isObjectId', id, ObjectID.isValid(id));
     return res.status(403).json(isValidChallengeCompletionErrorMsg);
   }
@@ -379,7 +412,11 @@ export async function modernChallengeCompleted(req, res, next) {
 
   // We only need to know the challenge type if it's a project. If it's a
   // step or normal challenge we can avoid storing in the database.
-  if (jsCertProjectIds.includes(id) || multifileCertProjectIds.includes(id)) {
+  if (
+    jsCertProjectIds.includes(id) ||
+    multifileCertProjectIds.includes(id) ||
+    multifilePythonCertProjectIds.includes(id)
+  ) {
     completedChallenge.challengeType = challengeType;
   }
 
@@ -417,7 +454,11 @@ async function projectCompleted(req, res, next) {
   ]);
   completedChallenge.completedDate = Date.now();
 
-  if (!completedChallenge.solution) {
+  if (
+    !completedChallenge.solution ||
+    (completedChallenge.challengeType === challengeTypes.backEndProject &&
+      !completedChallenge.githubLink)
+  ) {
     return res.status(403).json({
       type: 'error',
       message:
@@ -446,25 +487,6 @@ async function projectCompleted(req, res, next) {
     }
   }
 
-  const isMSTrophyProject = completedChallenge.challengeType === 18;
-  let isTrophyMissing = false;
-  if (isMSTrophyProject) {
-    if (!isMicrosoftLearnLink(completedChallenge.solution)) {
-      return res.status(403).json({
-        type: 'error',
-        message:
-          'You have not provided the valid links for us to inspect your work.'
-      });
-    }
-    try {
-      const mSLearnAPIUrl = getApiUrlFromTrophy(completedChallenge.solution);
-      isTrophyMissing = mSLearnAPIUrl ? !(await fetch(mSLearnAPIUrl)).ok : true;
-    } catch {
-      isTrophyMissing = true;
-      log(`Error verifying trophy: ${completedChallenge.solution}`);
-    }
-  }
-
   try {
     // This is an ugly hack to update `user.completedChallenges`
     await user.getCompletedChallenges$().toPromise();
@@ -486,8 +508,7 @@ async function projectCompleted(req, res, next) {
     return res.json({
       alreadyCompleted,
       points: alreadyCompleted ? user.points : user.points + 1,
-      completedDate: completedChallenge.completedDate,
-      ...(isMSTrophyProject && { isTrophyMissing })
+      completedDate: completedChallenge.completedDate
     });
   });
 }
@@ -693,6 +714,124 @@ function createExamChallengeCompleted(app) {
     } catch (err) {
       log(err);
       return res.send({ error: err.message });
+    }
+  };
+}
+
+function createMsTrophyChallengeCompleted(app) {
+  const { MsUsername } = app.models;
+
+  return async function msTrophyChallengeCompleted(req, res, next) {
+    const { user, body = {} } = req;
+    const { id = '' } = body;
+
+    try {
+      const msUser = await MsUsername.findOne({
+        where: { userId: user.id }
+      });
+
+      if (!msUser || !msUser.msUsername) {
+        return res
+          .status(403)
+          .json({ type: 'error', message: 'flash.ms.trophy.err-1' });
+      }
+
+      const { msUsername } = msUser;
+
+      const challenge = msTrophyChallenges.find(
+        challenge => challenge.id === id
+      );
+
+      if (!challenge) {
+        return res
+          .status(400)
+          .json({ type: 'error', message: 'flash.ms.trophy.err-2' });
+      }
+
+      const { msTrophyId = '' } = challenge;
+
+      const msProfileApi = `https://learn.microsoft.com/api/profiles/${msUsername}`;
+      const msProfileApiRes = await fetch(msProfileApi);
+      const msProfileJson = await msProfileApiRes.json();
+
+      if (!msProfileApiRes.ok || !msProfileJson.userId) {
+        return res.status(403).json({
+          type: 'error',
+          message: 'flash.ms.profile.err',
+          variables: {
+            msUsername
+          }
+        });
+      }
+
+      const { userId } = msProfileJson;
+
+      const msUserAchievementsApi = `https://learn.microsoft.com/api/achievements/user/${userId}`;
+      const msUserAchievementsApiRes = await fetch(msUserAchievementsApi);
+      const msUserAchievementsJson = await msUserAchievementsApiRes.json();
+
+      if (!msUserAchievementsApiRes.ok) {
+        return res.status(403).json({
+          type: 'error',
+          message: 'flash.ms.trophy.err-3'
+        });
+      }
+
+      if (msUserAchievementsJson.achievements?.length === 0) {
+        return res.status(403).json({
+          type: 'error',
+          message: 'flash.ms.trophy.err-6'
+        });
+      }
+
+      const hasEarnedTrophy = msUserAchievementsJson.achievements?.some(
+        a => a.typeId === msTrophyId
+      );
+
+      if (!hasEarnedTrophy) {
+        return res.status(403).json({
+          type: 'error',
+          message: 'flash.ms.trophy.err-4',
+          variables: {
+            msUsername
+          }
+        });
+      }
+
+      const completedChallenge = pick(body, ['id']);
+
+      completedChallenge.solution = msUserAchievementsApi;
+      completedChallenge.completedDate = Date.now();
+
+      try {
+        await user.getCompletedChallenges$().toPromise();
+      } catch (e) {
+        return next(e);
+      }
+
+      const { alreadyCompleted, updateData } = buildUserUpdate(
+        user,
+        completedChallenge.id,
+        completedChallenge
+      );
+
+      user.updateAttributes(updateData, err => {
+        if (err) {
+          return next(err);
+        }
+
+        return res.json({
+          alreadyCompleted,
+          points: alreadyCompleted ? user.points : user.points + 1,
+          completedDate: completedChallenge.completedDate
+        });
+      });
+    } catch (e) {
+      log(e);
+      return res.status(500).json({
+        type: 'error',
+        message: 'flash.ms.trophy.err-5'
+      });
     }
   };
 }

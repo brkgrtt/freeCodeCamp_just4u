@@ -1,13 +1,12 @@
 const path = require('path');
-const envData = require('../config/env.json');
+const envData = require('./config/env.json');
 const {
   buildChallenges,
   replaceChallengeNode,
   localeChallengesRootDir
 } = require('./utils/build-challenges');
 
-const { clientLocale, curriculumLocale, homeLocation, sentryClientDSN } =
-  envData;
+const { clientLocale, curriculumLocale, homeLocation } = envData;
 
 const curriculumIntroRoot = path.resolve(__dirname, './src/pages');
 const pathPrefix = clientLocale === 'english' ? '' : '/' + clientLocale;
@@ -24,12 +23,6 @@ module.exports = {
   plugins: [
     'gatsby-plugin-pnpm',
     {
-      resolve: '@sentry/gatsby',
-      options: {
-        dsn: sentryClientDSN
-      }
-    },
-    {
       resolve: 'gatsby-plugin-webpack-bundle-analyser-v2',
       options: {
         analyzerMode: 'disabled',
@@ -37,7 +30,14 @@ module.exports = {
       }
     },
     'gatsby-plugin-react-helmet',
-    'gatsby-plugin-postcss',
+    {
+      resolve: 'gatsby-plugin-postcss',
+      options: {
+        postcssOptions: {
+          config: path.resolve(__dirname, 'postcss.config.js')
+        }
+      }
+    },
     {
       resolve: 'gatsby-plugin-create-client-paths',
       options: {

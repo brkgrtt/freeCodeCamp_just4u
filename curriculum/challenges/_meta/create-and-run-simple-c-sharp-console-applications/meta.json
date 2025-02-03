@@ -1,12 +1,9 @@
 {
   "name": "Create and Run Simple C# Console Applications",
-  "isUpcomingChange": true,
+  "isUpcomingChange": false,
   "dashedName": "create-and-run-simple-c-sharp-console-applications",
-  "helpCategory": "HTML-CSS",
+  "helpCategory": "C-Sharp",
   "order": 1,
-  "time": "",
-  "template": "",
-  "required": [],
   "superBlock": "foundational-c-sharp-with-microsoft",
   "challengeOrder": [
     {
@@ -41,5 +38,6 @@
       "id": "647f87dc07d29547b3bee1bf",
       "title": "Trophy - Create and Run Simple C# Console Applications"
     }
-  ]
+  ],
+  "blockLayout": "legacy-challenge-list"
 }

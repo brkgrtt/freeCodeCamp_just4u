@@ -14,9 +14,7 @@ export interface State {
   [MainApp]: {
     appUsername: string;
     recentlyClaimedBlock: null | string;
-    completionCountWhenShownProgressModal: number | null;
     showMultipleProgressModals: boolean;
-    completionCount: number;
     currentChallengId: string;
     showCert: Record<string, unknown>;
     showCertFetchState: DefaultFetchState;
@@ -46,4 +44,31 @@ interface DefaultDonationFormState {
   processing: boolean;
   success: boolean;
   error: null | string;
+}
+
+export interface DonateFormState {
+  processing: boolean;
+  redirecting: boolean;
+  success: boolean;
+  error: string;
+  loading: {
+    stripe: boolean;
+    paypal: boolean;
+  };
+}
+
+export interface UpdateCardState {
+  redirecting: boolean;
+  success: boolean;
+  error: string;
+}
+
+export enum LocalStorageThemes {
+  Light = 'light',
+  Dark = 'dark'
+}
+
+export enum UserThemes {
+  Night = 'night',
+  Default = 'default'
 }

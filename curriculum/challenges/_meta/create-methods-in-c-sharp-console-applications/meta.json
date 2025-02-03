@@ -1,12 +1,9 @@
 {
   "name": "Create Methods in C# Console Applications",
-  "isUpcomingChange": true,
+  "isUpcomingChange": false,
   "dashedName": "create-methods-in-c-sharp-console-applications",
-  "helpCategory": "HTML-CSS",
+  "helpCategory": "C-Sharp",
   "order": 4,
-  "time": "",
-  "template": "",
-  "required": [],
   "superBlock": "foundational-c-sharp-with-microsoft",
   "challengeOrder": [
     {
@@ -33,5 +30,6 @@
       "id": "647f877f07d29547b3bee1be",
       "title": "Trophy - Create Methods in C# Console Applications"
     }
-  ]
+  ],
+  "blockLayout": "legacy-challenge-list"
 }

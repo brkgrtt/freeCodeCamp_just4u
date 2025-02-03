@@ -5,11 +5,6 @@ export const standardErrorMessage = {
   message: FlashMessages.WentWrong
 };
 
-export const trophyMissingMessage = {
-  type: 'danger',
-  message: FlashMessages.MSTrophyMissing
-};
-
 export const reallyWeirdErrorMessage = {
   type: 'danger',
   message: FlashMessages.ReallyWeird
@@ -17,10 +12,15 @@ export const reallyWeirdErrorMessage = {
 
 export const reportedErrorMessage = {
   type: 'danger',
-  message: FlashMessages.NotRight
+  message: FlashMessages.GenericError
 };
 
 export const certificateMissingErrorMessage = {
   type: 'danger',
   message: FlashMessages.CertificateMissing
+};
+
+export const msTrophyVerified = {
+  type: 'success',
+  message: FlashMessages.MsTrophyVerified
 };

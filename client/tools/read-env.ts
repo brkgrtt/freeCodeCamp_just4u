@@ -25,16 +25,13 @@ const {
   RADIO_LOCATION: radioLocation,
   CLIENT_LOCALE: clientLocale,
   CURRICULUM_LOCALE: curriculumLocale,
-  SHOW_LOCALE_DROPDOWN_MENU: showLocaleDropdownMenu,
   ALGOLIA_APP_ID: algoliaAppId,
   ALGOLIA_API_KEY: algoliaAPIKey,
   STRIPE_PUBLIC_KEY: stripePublicKey,
   PAYPAL_CLIENT_ID: paypalClientId,
   PATREON_CLIENT_ID: patreonClientId,
   DEPLOYMENT_ENV: deploymentEnv,
-  SENTRY_CLIENT_DSN: sentryClientDSN,
   SHOW_UPCOMING_CHANGES: showUpcomingChanges,
-  SHOW_NEW_CURRICULUM: showNewCurriculum,
   GROWTHBOOK_URI: growthbookUri
 } = process.env;
 
@@ -51,7 +48,6 @@ const locations = {
 export default Object.assign(locations, {
   clientLocale,
   curriculumLocale,
-  showLocaleDropdownMenu: showLocaleDropdownMenu === 'true',
   deploymentEnv,
   environment: process.env.FREECODECAMP_NODE_ENV || 'development',
   algoliaAppId:
@@ -74,12 +70,7 @@ export default Object.assign(locations, {
     !patreonClientId || patreonClientId === 'id_from_patreon_dashboard'
       ? null
       : patreonClientId,
-  sentryClientDSN:
-    !sentryClientDSN || sentryClientDSN === 'dsn_from_sentry_dashboard'
-      ? null
-      : sentryClientDSN,
   showUpcomingChanges: showUpcomingChanges === 'true',
-  showNewCurriculum: showNewCurriculum === 'true',
   growthbookUri:
     !growthbookUri || growthbookUri === 'api_URI_from_Growthbook_dashboard'
       ? null

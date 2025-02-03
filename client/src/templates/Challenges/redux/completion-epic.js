@@ -13,16 +13,16 @@ import {
 import { createFlashMessage } from '../../../components/Flash/redux';
 import {
   standardErrorMessage,
-  trophyMissingMessage
+  msTrophyVerified
 } from '../../../utils/error-messages';
 import {
   challengeTypes,
-  hasNoTests,
   submitTypes
-} from '../../../../../config/challenge-types';
+} from '../../../../../shared/config/challenge-types';
 import { actionTypes as submitActionTypes } from '../../../redux/action-types';
 import {
   allowBlockDonationRequests,
+  setIsProcessing,
   setRenderStartTime,
   submitComplete,
   updateComplete,
@@ -49,11 +49,14 @@ import {
   isBlockNewlyCompletedSelector
 } from './selectors';
 
-function postChallenge(update, username) {
+function postChallenge(update) {
+  const {
+    payload: { challengeType }
+  } = update;
   const saveChallenge = postUpdate$(update).pipe(
     retry(3),
     switchMap(({ data }) => {
-      const { savedChallenges, points, isTrophyMissing, examResults } = data;
+      const { savedChallenges, message, examResults } = data;
       const payloadWithClientProperties = {
         ...omit(update.payload, ['files'])
       };
@@ -66,22 +69,22 @@ function postChallenge(update, username) {
         );
       }
 
-      const actions = [
+      let actions = [
         submitComplete({
-          submittedChallenge: {
-            username,
-            points,
-            ...payloadWithClientProperties
-          },
+          submittedChallenge: payloadWithClientProperties,
           savedChallenges: mapFilesToChallengeFiles(savedChallenges),
           examResults
         }),
         updateComplete(),
         submitChallengeComplete()
       ];
-      // TODO(Post-MVP): separate endpoint for trophy submission?
-      if (isTrophyMissing)
-        actions.push(createFlashMessage(trophyMissingMessage));
+
+      if (message && challengeType === challengeTypes.msTrophy) {
+        actions = [createFlashMessage(data), submitChallengeError()];
+      } else if (challengeType === challengeTypes.msTrophy) {
+        actions.push(createFlashMessage(msTrophyVerified));
+      }
+
       return of(...actions);
     }),
     catchError(() => of(updateFailed(update), submitChallengeError()))
@@ -92,10 +95,7 @@ function postChallenge(update, username) {
 function submitModern(type, state) {
   const challengeType = state.challenge.challengeMeta.challengeType;
   const tests = challengeTestsSelector(state);
-  if (
-    hasNoTests(challengeType) ||
-    (tests.length > 0 && tests.every(test => test.pass && !test.err))
-  ) {
+  if (tests.length === 0 || tests.every(test => test.pass && !test.err)) {
     if (type === actionTypes.checkChallenge) {
       return of({ type: 'this was a check challenge' });
     }
@@ -103,12 +103,12 @@ function submitModern(type, state) {
     if (type === actionTypes.submitChallenge) {
       const { id, block } = challengeMetaSelector(state);
       const challengeFiles = challengeFilesSelector(state);
-      const { username } = userSelector(state);
 
       let body;
       if (
         block === 'javascript-algorithms-and-data-structures-projects' ||
-        challengeType === challengeTypes.multifileCertProject
+        challengeType === challengeTypes.multifileCertProject ||
+        challengeType === challengeTypes.multifilePythonCertProject
       ) {
         body = standardizeRequestBody({ id, challengeType, challengeFiles });
       } else {
@@ -122,7 +122,7 @@ function submitModern(type, state) {
         endpoint: '/modern-challenge-completed',
         payload: body
       };
-      return postChallenge(update, username);
+      return postChallenge(update);
     }
   }
   return empty();
@@ -155,7 +155,6 @@ function submitBackendChallenge(type, state) {
   if (tests.length > 0 && tests.every(test => test.pass && !test.err)) {
     if (type === actionTypes.submitChallenge) {
       const { id } = challengeMetaSelector(state);
-      const { username } = userSelector(state);
       const {
         solution: { value: solution }
       } = projectFormValuesSelector(state);
@@ -165,7 +164,7 @@ function submitBackendChallenge(type, state) {
         endpoint: '/backend-challenge-completed',
         payload: challengeInfo
       };
-      return postChallenge(update, username);
+      return postChallenge(update);
     }
   }
   return empty();
@@ -176,7 +175,8 @@ const submitters = {
   backend: submitBackendChallenge,
   'project.frontEnd': submitProject,
   'project.backEnd': submitProject,
-  exam: submitExam
+  exam: submitExam,
+  msTrophy: submitMsTrophy
 };
 
 function submitExam(type, state) {
@@ -197,6 +197,21 @@ function submitExam(type, state) {
   return empty();
 }
 
+function submitMsTrophy(type, state) {
+  if (type === actionTypes.submitChallenge) {
+    const { id, challengeType } = challengeMetaSelector(state);
+
+    const challengeInfo = { id, challengeType };
+
+    const update = {
+      endpoint: '/ms-trophy-challenge-completed',
+      payload: challengeInfo
+    };
+    return postChallenge(update);
+  }
+  return empty();
+}
+
 export default function completionEpic(action$, state$) {
   return action$.pipe(
     ofType(actionTypes.submitChallenge),
@@ -204,14 +219,16 @@ export default function completionEpic(action$, state$) {
       const state = state$.value;
 
       const {
-        nextBlock,
+        isLastChallengeInBlock,
         nextChallengePath,
         challengeType,
         superBlock,
         block,
         blockHashSlug
       } = challengeMetaSelector(state);
-      let submitter = () => of({ type: 'no-user-signed-in' });
+      // Default to submitChallengeComplete since we do not want the user to
+      // be stuck in the 'isSubmitting' state.
+      let submitter = () => of(submitChallengeComplete());
       if (
         !(challengeType in submitTypes) ||
         !(submitTypes[challengeType] in submitters)
@@ -226,8 +243,7 @@ export default function completionEpic(action$, state$) {
         submitter = submitters[submitTypes[challengeType]];
       }
 
-      const lastChallengeInBlock = block !== nextBlock;
-      let pathToNavigateTo = lastChallengeInBlock
+      let pathToNavigateTo = isLastChallengeInBlock
         ? blockHashSlug
         : nextChallengePath;
 
@@ -236,7 +252,9 @@ export default function completionEpic(action$, state$) {
         action.type === submitActionTypes.submitComplete;
 
       return submitter(type, state).pipe(
-        concat(of(setIsAdvancing(!lastChallengeInBlock))),
+        concat(
+          of(setIsAdvancing(!isLastChallengeInBlock), setIsProcessing(false))
+        ),
         mergeMap(x =>
           canAllowDonationRequest(state, x)
             ? of(x, allowBlockDonationRequests({ superBlock, block }))
